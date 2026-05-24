@@ -470,7 +470,63 @@ def generate_comprehensive_report(
 
 def health_response(user_input):
 
-    user_input = user_input.lower()
+    user_input = user_input.lower().strip()
+
+    # ---------------- GREETINGS ----------------
+
+    greetings = [
+        "hi",
+        "hello",
+        "hey",
+        "good morning",
+        "good evening"
+    ]
+
+    if user_input in greetings:
+        return (
+            "Hello 👋\n\n"
+            "Welcome to Health Assist ChatBot.\n"
+            "How can I help you today?"
+        )
+
+    # ---------------- THANK YOU ----------------
+
+    thank_words = [
+        "thank you",
+        "thanks",
+        "thankyou",
+        "thx"
+    ]
+
+    if user_input in thank_words:
+        return (
+            "You're welcome 😊\n\n"
+            "Stay healthy and take care!"
+        )
+
+    # ---------------- EMERGENCY NUMBERS ----------------
+
+    emergency_queries = [
+        "ambulance number",
+        "emergency number",
+        "helpline",
+        "medical emergency",
+        "hospital number"
+    ]
+
+    if user_input in emergency_queries:
+        return """
+🚑 IMPORTANT EMERGENCY NUMBERS
+
+• Ambulance: 102
+• Medical Emergency: 108
+• National Emergency: 112
+• Women Helpline: 1091
+• Child Helpline: 1098
+• Mental Health Helpline: 1800-599-0019
+"""
+
+    # ---------------- HELP MENU ----------------
 
     if user_input in [
         "help",
@@ -518,13 +574,9 @@ Supported symptoms:
 
 5. REPORT GENERATION
 - Download PDF reports
-
-INDIAN EMERGENCY HELPLINES
-- Medical Emergency: 108
-- National Emergency: 112
-- Ambulance: 102
-- Mental Health: 1800-599-0019
 """
+
+    # ---------------- HEALTH RESPONSES ----------------
 
     health_info = {
 
@@ -583,7 +635,8 @@ INDIAN EMERGENCY HELPLINES
             return response
 
     return (
-        "Unknown query. Type HELP to see available features."
+        "Unknown query.\n\n"
+        "Type HELP to see available features."
     )
 
 # ---------------- PAGE CONFIG ----------------
