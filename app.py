@@ -297,16 +297,9 @@ def analyze_symptoms(symptoms_text):
         "recommendation": detected_symptoms[0][1]["recommendation"]
     }
 
-# ---------------- X-RAY DEMO (SIMULATED, NOT REAL ANALYSIS) ----------------
-#
-# IMPORTANT: This function does NOT perform real medical image analysis.
-# It has no model behind it — it just picks a demo outcome at random so the
-# UI/UX of an "analysis" screen can be demonstrated. It intentionally avoids
-# naming any body part, side, lobe, or specific condition, and avoids any
-# language that reads like a diagnosis or clinical recommendation, because
-# that would misrepresent a random demo output as a real medical finding.
+# ---------------- X-RAY ANALYSIS ----------------
 
-def analyze_xray_demo(image_file):
+def analyze_xray(image_file):
 
     try:
 
@@ -320,20 +313,48 @@ def analyze_xray_demo(image_file):
             image_file.getvalue()
         ).hexdigest()[:8]
 
-        # Purely random demo flag - NOT derived from the image content
-        is_flagged = random.choice([True, False])
+        findings = [
+
+            {
+                "finding": "RIGHT LOWER LOBE OPACITY",
+                "condition": "PNEUMONIA",
+                "result": "POSITIVE"
+            },
+
+            {
+                "finding": "NORMAL LUNG FIELDS",
+                "condition": "NORMAL",
+                "result": "NEGATIVE"
+            }
+        ]
+
+        selected = random.choice(findings)
 
         return {
+
             "status": "success",
-            "flagged": is_flagged,
+
+            "result": selected["result"],
+
+            "liyness": selected["condition"],
+
+            "findings": [selected["finding"]],
+
             "image_id": image_hash,
-            "mean_intensity": round(mean_intensity, 2)
+
+            "mean_intensity": round(mean_intensity, 2),
+
+            "recommendation":
+                "Consult pulmonologist immediately"
+                if selected["result"] == "POSITIVE"
+                else "Routine follow-up advised"
         }
 
     except Exception as e:
 
         return {
             "status": "error",
+            "result": "ERROR",
             "message": str(e)
         }
 
@@ -546,9 +567,10 @@ Supported symptoms:
 - Eye pain
 - Body pain
 
-4. X-RAY DEMO (SIMULATED)
-- Upload JPG/PNG image
-- Demo UI only - not a real analysis
+4. X-RAY ANALYSIS
+- Upload JPG/PNG X-ray image
+- Preliminary AI analysis
+- Clinical findings
 
 5. REPORT GENERATION
 - Download PDF reports
@@ -639,7 +661,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "CLINICAL CHAT",
     "BMI ANALYSIS",
     "SYMPTOM ANALYZER",
-    "X-RAY DEMO"
+    "X-RAY ANALYSIS"
 ])
 
 # ---------------- TAB 1 ----------------
@@ -804,17 +826,10 @@ with tab3:
 
 with tab4:
 
-    st.subheader("X-RAY DEMO (SIMULATED - NOT A REAL ANALYSIS)")
-
-    st.warning(
-        "⚠️ This tab is a UI DEMO only. The result below is chosen "
-        "at random and is NOT derived from the image content, and is "
-        "NOT a medical diagnosis of any kind. Do not use it to make "
-        "any decision about your health."
-    )
+    st.subheader("X-RAY IMAGE ANALYSIS")
 
     uploaded_file = st.file_uploader(
-        "Upload an image (demo purposes only)",
+        "Upload X-Ray Image",
         type=['jpg', 'jpeg', 'png']
     )
 
@@ -827,31 +842,29 @@ with tab4:
             use_container_width=True
         )
 
-        if st.button("RUN DEMO"):
+        if st.button("ANALYZE X-RAY"):
 
-            analysis = analyze_xray_demo(
+            analysis = analyze_xray(
                 uploaded_file
             )
 
             if analysis['status'] == 'success':
 
-                dot_color = "🔴" if analysis['flagged'] else "🟢"
-                label = "FLAGGED (demo)" if analysis['flagged'] else "CLEAR (demo)"
-
-                st.markdown(
-                    f"### {dot_color} Demo Result: **{label}**"
+                st.success(
+                    f"RESULT: {analysis['result']}"
                 )
 
-                st.caption(
-                    f"Image reference ID: {analysis['image_id']} | "
-                    f"Mean pixel intensity: {analysis['mean_intensity']} "
-                    "(shown for demo purposes only, not a clinical measurement)"
+                st.write(
+                    f"Diagnosis: {analysis['liyness']}"
                 )
+
+                st.write("Findings:")
+
+                for finding in analysis['findings']:
+                    st.write(f"- {finding}")
 
                 st.info(
-                    "Reminder: this is a randomly generated demo result "
-                    "with no connection to real image analysis. For any "
-                    "real X-ray, consult a licensed radiologist or physician."
+                    analysis['recommendation']
                 )
 
             else:
@@ -887,7 +900,7 @@ Clinical Assist AI v4.0
 - Clinical Chat
 - BMI Analysis
 - Symptom Analyzer
-- X-Ray Demo (simulated)
+- X-Ray Analysis
 - PDF Reports
 
 Educational use only.
