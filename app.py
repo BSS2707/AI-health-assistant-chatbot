@@ -163,7 +163,7 @@ def analyze_symptoms(symptoms_text):
 
         "leg_pain": {
             "possible_conditions": [
-                "Muscle Cramps",
+                "Muscle Camps",
                 "Arthritis"
             ],
             "severity": "Mild",
@@ -336,7 +336,7 @@ def analyze_xray(image_file):
 
             "result": selected["result"],
 
-            "liyness": selected["condition"],
+            "diagnosis": selected["condition"],
 
             "findings": [selected["finding"]],
 
@@ -822,7 +822,7 @@ with tab3:
                     "No matching symptom pattern found."
                 )
 
-# ---------------- TAB 4 ----------------
+# ---------------- TAB 4 (MODIFIED) ----------------
 
 with tab4:
 
@@ -850,12 +850,18 @@ with tab4:
 
             if analysis['status'] == 'success':
 
-                st.success(
-                    f"RESULT: {analysis['result']}"
-                )
+                # Check if the result is positive or negative to choose the UI component
+                if analysis['result'] == 'POSITIVE':
+                    st.error(
+                        f"RESULT: {analysis['result']}"
+                    )
+                else:
+                    st.success(
+                        f"RESULT: {analysis['result']}"
+                    )
 
                 st.write(
-                    f"Diagnosis: {analysis['liyness']}"
+                    f"Diagnosis: {analysis['diagnosis']}"
                 )
 
                 st.write("Findings:")
@@ -914,4 +920,4 @@ st.caption(
     "CLINICAL DISCLAIMER: "
     "This AI system provides educational information only. "
     "Not a substitute for licensed medical advice."
-    )
+)
