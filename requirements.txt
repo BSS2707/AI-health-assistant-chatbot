@@ -2,4 +2,6 @@ streamlit
 pandas
 numpy
 reportlab
-pillow
+Pillow
+torch
+torchxrayvision
