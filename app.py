@@ -887,22 +887,23 @@ with tab4:
 
             if analysis['status'] == 'success':
 
-                dot_color = "🔴" if analysis['flagged'] else "🟢"
-                label = "FINDINGS DETECTED" if analysis['flagged'] else "NO FINDINGS ABOVE THRESHOLD"
-
-                st.markdown(
-                    f"### {dot_color} Result: **{label}**"
-                )
-
                 st.caption(f"Image reference ID: {analysis['image_id']}")
 
                 if analysis['flagged']:
-                    st.write("Flagged conditions (probability ≥ {:.0%}):".format(FLAG_THRESHOLD))
-                    for name, prob in analysis['flagged_findings']:
-                        st.write(f"- {name}: {prob:.1%}")
+                    # Positive (flagged) -> red
+                    findings_text = ", ".join(
+                        f"{name} ({prob:.1%})"
+                        for name, prob in analysis['flagged_findings']
+                    )
+                    st.error(
+                        f"POSITIVE - Findings detected (probability ≥ "
+                        f"{FLAG_THRESHOLD:.0%}): {findings_text}"
+                    )
                 else:
-                    st.write(
-                        f"No condition scored at or above the {FLAG_THRESHOLD:.0%} threshold."
+                    # Negative (clear) -> green
+                    st.success(
+                        f"NEGATIVE - No condition scored at or above the "
+                        f"{FLAG_THRESHOLD:.0%} threshold."
                     )
 
                 with st.expander("View all condition scores"):
