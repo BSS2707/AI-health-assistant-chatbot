@@ -15,7 +15,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from PIL import Image as PILImage
 import hashlib
-import random
+import torch
+import torchxrayvision as xrv
+from torchxrayvision.datasets import XRayCenterCrop, XRayResizer
 
 # ---------------- SESSION STATE ----------------
 
@@ -297,64 +299,91 @@ def analyze_symptoms(symptoms_text):
         "recommendation": detected_symptoms[0][1]["recommendation"]
     }
 
-# ---------------- X-RAY ANALYSIS ----------------
+# ---------------- X-RAY ANALYSIS (REAL MODEL) ----------------
+#
+# This uses torchxrayvision's pretrained DenseNet121 model
+# (weights="densenet121-res224-all"), trained on large public chest
+# X-ray datasets (NIH ChestX-ray14, PadChest, CheXpert, MIMIC-CXR, etc).
+# It performs genuine inference on the uploaded pixels and returns real
+# per-pathology probabilities - this is not a placeholder or random output.
+#
+# IMPORTANT CONTEXT THAT DOES NOT CHANGE: this is still a research-grade
+# screening model. It is not FDA-cleared, has not reviewed this specific
+# patient, and can be wrong (false positives and false negatives both
+# happen with real models like this one). It should be treated as a
+# screening aid, never as a diagnosis.
+
+FLAG_THRESHOLD = 0.5  # probability above which a pathology is flagged red
+
+@st.cache_resource
+def load_xray_model():
+    model = xrv.models.DenseNet(weights="densenet121-res224-all")
+    model.eval()
+    return model
+
+
+def preprocess_image(image_file):
+    image = PILImage.open(image_file).convert("L")
+    img_array = np.array(image).astype(np.float32)
+
+    # torchxrayvision expects images normalized to [-1024, 1024]
+    img_array = xrv.datasets.normalize(img_array, 255)
+
+    img_array = img_array[None, :, :]  # add channel dim -> (1, H, W)
+
+    img_array = XRayCenterCrop()(img_array)
+    img_array = XRayResizer(224)(img_array)
+
+    tensor = torch.from_numpy(img_array).unsqueeze(0).float()  # (1,1,224,224)
+    return tensor
+
 
 def analyze_xray(image_file):
 
     try:
 
-        image = PILImage.open(image_file)
-
-        img_array = np.array(image.convert('L'))
-
-        mean_intensity = np.mean(img_array)
+        model = load_xray_model()
 
         image_hash = hashlib.md5(
             image_file.getvalue()
         ).hexdigest()[:8]
 
-        findings = [
+        tensor = preprocess_image(image_file)
 
-            {
-                "finding": "RIGHT LOWER LOBE OPACITY",
-                "condition": "PNEUMONIA",
-                "result": "POSITIVE"
-            },
+        with torch.no_grad():
+            output = model(tensor)
+            probs = output[0].numpy()
 
-            {
-                "finding": "NORMAL LUNG FIELDS",
-                "condition": "NORMAL",
-                "result": "NEGATIVE"
-            }
+        results = {
+            pathology: float(prob)
+            for pathology, prob in zip(model.pathologies, probs)
+            if pathology  # some entries can be empty strings in this model
+        }
+
+        # Sort by probability, highest first
+        sorted_results = sorted(
+            results.items(), key=lambda x: x[1], reverse=True
+        )
+
+        flagged_findings = [
+            (name, prob) for name, prob in sorted_results
+            if prob >= FLAG_THRESHOLD
         ]
 
-        selected = random.choice(findings)
+        is_flagged = len(flagged_findings) > 0
 
         return {
-
             "status": "success",
-
-            "result": selected["result"],
-
-            "liyness": selected["condition"],
-
-            "findings": [selected["finding"]],
-
+            "flagged": is_flagged,
+            "flagged_findings": flagged_findings,
+            "all_scores": sorted_results,
             "image_id": image_hash,
-
-            "mean_intensity": round(mean_intensity, 2),
-
-            "recommendation":
-                "Consult pulmonologist immediately"
-                if selected["result"] == "POSITIVE"
-                else "Routine follow-up advised"
         }
 
     except Exception as e:
 
         return {
             "status": "error",
-            "result": "ERROR",
             "message": str(e)
         }
 
@@ -568,9 +597,9 @@ Supported symptoms:
 - Body pain
 
 4. X-RAY ANALYSIS
-- Upload JPG/PNG X-ray image
-- Preliminary AI analysis
-- Clinical findings
+- Upload JPG/PNG chest X-ray image
+- Real AI model screening (research-grade, not a diagnosis)
+- Per-condition probability scores
 
 5. REPORT GENERATION
 - Download PDF reports
@@ -828,8 +857,17 @@ with tab4:
 
     st.subheader("X-RAY IMAGE ANALYSIS")
 
+    st.info(
+        "ℹ️ This uses a real pretrained AI model "
+        "(torchxrayvision DenseNet121, trained on public chest X-ray "
+        "datasets) to score the uploaded image against 18 known chest "
+        "conditions. It is a research-grade screening tool, **not a "
+        "diagnosis** - results can be wrong, and any real concern should "
+        "be reviewed by a licensed radiologist or physician."
+    )
+
     uploaded_file = st.file_uploader(
-        "Upload X-Ray Image",
+        "Upload X-Ray Image (chest X-rays give the most meaningful results)",
         type=['jpg', 'jpeg', 'png']
     )
 
@@ -844,27 +882,38 @@ with tab4:
 
         if st.button("ANALYZE X-RAY"):
 
-            analysis = analyze_xray(
-                uploaded_file
-            )
+            with st.spinner("Running model inference..."):
+                analysis = analyze_xray(uploaded_file)
 
             if analysis['status'] == 'success':
 
-                st.success(
-                    f"RESULT: {analysis['result']}"
+                dot_color = "🔴" if analysis['flagged'] else "🟢"
+                label = "FINDINGS DETECTED" if analysis['flagged'] else "NO FINDINGS ABOVE THRESHOLD"
+
+                st.markdown(
+                    f"### {dot_color} Result: **{label}**"
                 )
 
-                st.write(
-                    f"Diagnosis: {analysis['liyness']}"
-                )
+                st.caption(f"Image reference ID: {analysis['image_id']}")
 
-                st.write("Findings:")
+                if analysis['flagged']:
+                    st.write("Flagged conditions (probability ≥ {:.0%}):".format(FLAG_THRESHOLD))
+                    for name, prob in analysis['flagged_findings']:
+                        st.write(f"- {name}: {prob:.1%}")
+                else:
+                    st.write(
+                        f"No condition scored at or above the {FLAG_THRESHOLD:.0%} threshold."
+                    )
 
-                for finding in analysis['findings']:
-                    st.write(f"- {finding}")
+                with st.expander("View all condition scores"):
+                    for name, prob in analysis['all_scores']:
+                        st.write(f"- {name}: {prob:.1%}")
 
-                st.info(
-                    analysis['recommendation']
+                st.warning(
+                    "This is an AI screening estimate from a general-purpose "
+                    "research model, not a clinical diagnosis. Please consult "
+                    "a licensed radiologist or physician for interpretation "
+                    "of any real X-ray."
                 )
 
             else:
@@ -900,7 +949,7 @@ Clinical Assist AI v4.0
 - Clinical Chat
 - BMI Analysis
 - Symptom Analyzer
-- X-Ray Analysis
+- X-Ray Analysis (real AI model)
 - PDF Reports
 
 Educational use only.
